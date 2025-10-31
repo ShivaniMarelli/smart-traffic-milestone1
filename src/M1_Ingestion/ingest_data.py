@@ -1,87 +1,49 @@
 from pyspark.sql import SparkSession
-from pyspark.sql.types import StructType, StructField, StringType, IntegerType, TimestampType
-from pyspark.sql.functions import col, when, to_timestamp, lower, regexp_replace
+from pyspark.sql.functions import when, col, expr
 
-CSV_FILE_PATH = "raw_traffic_violations.csv"
-PARQUET_OUTPUT_PATH = "processed_data/M1_Cleaned_Data.parquet"
-
-TARGET_SCHEMA = StructType([
-    StructField("Violation_ID", StringType(), False),
-    StructField("Timestamp_Clean", TimestampType(), True),
-    StructField("Location", StringType(), True),
-    StructField("Violation_Type", StringType(), True),
-    StructField("Vehicle_Type", StringType(), True),
-    StructField("Severity_Clean", IntegerType(), True)
-])
-
-print("Attempting to create SparkSession...")
+# Initialize Spark session
 spark = SparkSession.builder \
-    .appName("M1_DataCleaning") \
-    .master("local[*]") \
+    .appName("IngestData") \
     .getOrCreate()
 
-print("\nSUCCESS: PySpark Session established.")
+# Read input file (use the absolute path to your CSV)
+input_path = r"C:\Users\shiva\OneDrive\Desktop\smart-traffic\raw_traffic_violations.csv"
+df = spark.read.option("header", True).csv(input_path)
 
-raw_schema = StructType([
-    StructField("Violation ID", StringType(), True),
-    StructField("Timestamp", StringType(), True),
-    StructField("Location", StringType(), True),
-    StructField("Violation Type", StringType(), True),
-    StructField("Vehicle Type", StringType(), True),
-    StructField("Severity", StringType(), True)
-])
+# Show initial data for verification
+print(f"Total Records Loaded: {df.count()}")
+df.show(10, truncate=False)
 
-try:
-    df_raw = spark.read.csv(
-        CSV_FILE_PATH,
-        header=True,
-        schema=raw_schema,
-        nullValue=""
-    )
-    print(f"Total Records Loaded for Cleaning: {df_raw.count()}")
+# Safely cast Severity to integer (it's already mostly int, but handle any strings/nulls)
+df = df.withColumn("Severity", expr("try_cast(Severity AS INT)"))
 
-    TS_FORMATS = [
-        "yyyy-MM-dd HH:mm:ss",
-        "MM/dd/yy HH:mm",
-        "yyyy/dd/MM HH:mm:ss",
-        "yyyy_MM_dd HH:mm:ss",
-    ]
-    
-    df_clean = df_raw.withColumn(
-        "Timestamp_Clean",
-        to_timestamp(col("Timestamp"), *TS_FORMATS)
-    )
+# Optional: Filter out rows with null Violation Type (as in your original script)
+df = df.filter(col("Violation Type").isNotNull())
 
-    df_clean = df_clean.withColumn(
-        "Severity_Clean",
-        when(col("Severity").cast(IntegerType()).isNull(), None)
-        .otherwise(col("Severity").cast(IntegerType()))
-    )
-    
-    df_clean = df_clean.withColumn(
-        "Violation_Type", lower(col("Violation Type"))
-    ).drop("Violation Type")
+# Optional: Add any other cleaning, e.g., map Violation Type to integers if needed
+# Example: Map 'Illegal Parking' -> 1, 'Speeding' -> 2, etc. (adjust based on your needs)
+violation_mapping = {
+    "Illegal Parking": 1,
+    "No Signal": 2,
+    "Speeding": 3,
+    "Illegal Turn": 4,
+    "Red Light": 5
+}
+df = df.withColumn(
+    "Violation_Type_Int",
+    when(col("Violation Type") == "Illegal Parking", 1)
+    .when(col("Violation Type") == "No Signal", 2)
+    .when(col("Violation Type") == "Speeding", 3)
+    .when(col("Violation Type") == "Illegal Turn", 4)
+    .when(col("Violation Type") == "Red Light", 5)
+    .otherwise(None)
+)
 
-    df_clean = df_clean.withColumnRenamed("Violation ID", "Violation_ID")
-    
-    df_clean = df_clean.select(
-        "Violation_ID",
-        "Timestamp_Clean",
-        "Location",
-        "Violation_Type",
-        col("Vehicle Type").alias("Vehicle_Type"),
-        "Severity_Clean"
-    )
+# Write cleaned data to output (using Parquet for efficiency; change to CSV if needed)
+output_path_csv = r"C:\Users\shiva\OneDrive\Desktop\smart-traffic\traffic_violations_cleaned.csv"
+df.write.mode("overwrite").option("header", True).csv(output_path_csv)
 
-    print(f"\nWriting {df_clean.count()} cleaned records to {PARQUET_OUTPUT_PATH}...")
-    
-    df_clean.write.mode("overwrite").parquet(PARQUET_OUTPUT_PATH)
-    
-    print("\nSUCCESS: Data Cleaning Complete. Final Clean Schema:")
-    df_clean.printSchema()
+print(f"Cleaned data saved to {output_path_csv}")
 
-except Exception as e:
-    print(f"\nCRITICAL ERROR during data cleaning: {e}")
-
-finally:
-    spark.stop()
+# Stop Spark session
+spark.stop()
