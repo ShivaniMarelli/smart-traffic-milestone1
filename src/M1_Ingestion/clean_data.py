@@ -1,7 +1,7 @@
 from pyspark.sql import SparkSession
 
 # Path to the cleaned Parquet file created by ingest.py
-PARQUET_INPUT_PATH = "processed_data/M1_Cleaned_Data.parquet"
+PARQUET_INPUT_PATH = "data/processed/parquet/cleaned_violations.parquet"
 
 # Create Spark session
 spark = SparkSession.builder \
