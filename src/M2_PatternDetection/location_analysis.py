@@ -21,21 +21,35 @@ hadoop_home = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..'
 os.environ['HADOOP_HOME'] = hadoop_home
 os.environ['PATH'] = os.path.join(hadoop_home, 'bin') + os.pathsep + os.environ['PATH']
 
+
+# ✅ FIXED FUNCTION — handles quotes & spaces correctly
 def extract_coordinates(df):
-    """Extract latitude and longitude from location string if available"""
-    return df.withColumn(
+    """Extract latitude and longitude from location strings, handling quotes and spaces too."""
+    # Remove quotes and whitespace first
+    df = df.withColumn("Location", regexp_extract(col("Location"), r'"?(-?\d+\.?\d*)[, ]+(-?\d+\.?\d*)"?', 0))
+
+    # Extract numeric latitude and longitude even if quotes exist
+    df = df.withColumn(
         "Latitude",
         when(
-            regexp_extract(col("Location"), r"(-?\d+\.?\d*),\s*(-?\d+\.?\d*)", 1) != "",
-            regexp_extract(col("Location"), r"(-?\d+\.?\d*),\s*(-?\d+\.?\d*)", 1).cast(DoubleType())
+            regexp_extract(col("Location"), r'"?(-?\d+\.?\d*)[, ]+(-?\d+\.?\d*)"?', 1) != "",
+            regexp_extract(col("Location"), r'"?(-?\d+\.?\d*)[, ]+(-?\d+\.?\d*)"?', 1).cast(DoubleType())
         ).otherwise(None)
     ).withColumn(
         "Longitude",
         when(
-            regexp_extract(col("Location"), r"(-?\d+\.?\d*),\s*(-?\d+\.?\d*)", 2) != "",
-            regexp_extract(col("Location"), r"(-?\d+\.?\d*),\s*(-?\d+\.?\d*)", 2).cast(DoubleType())
+            regexp_extract(col("Location"), r'"?(-?\d+\.?\d*)[, ]+(-?\d+\.?\d*)"?', 2) != "",
+            regexp_extract(col("Location"), r'"?(-?\d+\.?\d*)[, ]+(-?\d+\.?\d*)"?', 2).cast(DoubleType())
         ).otherwise(None)
     )
+
+    # Keep UNKNOWN only if truly invalid
+    df = df.withColumn(
+        "Location",
+        when(col("Latitude").isNull() | col("Longitude").isNull(), "UNKNOWN").otherwise(col("Location"))
+    )
+    return df
+
 
 def identify_hotspots(df, threshold_stddev=2.0):
     """Identify statistically significant hotspots based on violation frequency"""
@@ -73,6 +87,7 @@ def identify_hotspots(df, threshold_stddev=2.0):
     )
     
     return hotspots
+
 
 def cluster_locations(df, k=5):
     """Perform K-means clustering on locations with coordinates"""
@@ -118,6 +133,7 @@ def cluster_locations(df, k=5):
     
     return cluster_stats
 
+
 def run_location_analysis():
     # Step 1: Initialize Spark
     spark = get_spark("LocationAnalysis")
@@ -162,11 +178,11 @@ def run_location_analysis():
           .orderBy(desc("Total_Violations"))
     )
 
-    # Step 5: Ensure output directory exists
+    # Step 8: Ensure output directory exists
     output_dir = "data/processed/parquet"
     os.makedirs(output_dir, exist_ok=True)
 
-    # Step 7: Save results in both CSV and Parquet formats
+    # Step 9: Save results in both CSV and Parquet formats
     csv_dir = os.path.abspath(os.path.join(os.getcwd(), "data", "processed", "csv"))
     print(f"Creating CSV directory: {csv_dir}")
     os.makedirs(csv_dir, exist_ok=True)
@@ -176,12 +192,8 @@ def run_location_analysis():
     os.makedirs(parquet_dir, exist_ok=True)
 
     def save_dataframe(df, name):
-        # Save as CSV
         csv_path = os.path.join(csv_dir, f"{name}.csv")
-        # Save as Parquet
         parquet_path = os.path.join(parquet_dir, f"{name}.parquet")
-        
-        # Convert to pandas and save
         pandas_df = df.toPandas()
         pandas_df.to_csv(csv_path, index=False)
         pandas_df.to_parquet(parquet_path, index=False)
@@ -200,6 +212,7 @@ def run_location_analysis():
         "hotspots": hotspots,
         "clusters": cluster_analysis
     }
+
 
 if __name__ == "__main__":
     run_location_analysis()

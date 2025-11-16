@@ -1,9 +1,59 @@
-
-venv/
+# ---- Python ----
 __pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.egg-info/
+*.egg
+
+# Virtual environment
+venv/
+env/
+.venv/
+
+# ---- VSCode ----
 .vscode/
+*.code-workspace
 
-
+# ---- Data Files ----
+# Raw and processed datasets
 raw_traffic_violations.csv
-
 processed_data/
+temp_input/
+temp_output/
+once/
+
+# YOLO datasets and outputs
+datasetsyolo/
+runs/
+**/labels.cache
+
+# ---- Spark / Hadoop ----
+spark-warehouse/
+derby.log
+metastore_db/
+
+# ---- Logs ----
+*.log
+logs/
+
+# ---- OS files ----
+.DS_Store
+Thumbs.db
+
+# ---- Environment / secrets ----
+.env
+*.key
+*.token
+*.json
+
+# ---- Jupyter ----
+.ipynb_checkpoints/
+
+# ---- Reports / Artifacts ----
+Internship_artifacts/
+reports/
+
+# ---- Build / Packaging ----
+dist/
+build/
