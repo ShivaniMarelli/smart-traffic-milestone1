@@ -1,0 +1,13 @@
+train: ../train/images
+val: ../valid/images
+test: ../test/images
+
+nc: 3
+names: ['helmet', 'no_helmet', 'overloading']
+
+roboflow:
+  workspace: charan-qvmnj
+  project: nohelmet-dnqyh
+  version: 1
+  license: CC BY 4.0
+  url: https://universe.roboflow.com/charan-qvmnj/nohelmet-dnqyh/dataset/1

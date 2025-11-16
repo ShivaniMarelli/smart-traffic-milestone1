@@ -15,18 +15,6 @@ env/
 .vscode/
 *.code-workspace
 
-# ---- Data Files ----
-# Raw and processed datasets
-raw_traffic_violations.csv
-processed_data/
-temp_input/
-temp_output/
-once/
-
-# YOLO datasets and outputs
-datasetsyolo/
-runs/
-**/labels.cache
 
 # ---- Spark / Hadoop ----
 spark-warehouse/
@@ -50,9 +38,7 @@ Thumbs.db
 # ---- Jupyter ----
 .ipynb_checkpoints/
 
-# ---- Reports / Artifacts ----
-Internship_artifacts/
-reports/
+
 
 # ---- Build / Packaging ----
 dist/
