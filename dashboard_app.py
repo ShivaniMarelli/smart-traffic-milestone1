@@ -2,285 +2,304 @@ import streamlit as st
 import pandas as pd
 import plotly.express as px
 import os
-import tempfile
 from PIL import Image, ImageDraw
-from inference_sdk import InferenceHTTPClient
+from ultralytics import YOLO
 
 # ======================================================
-# 🔹 ROBFLOW YOLO DETECTION SECTION
+# PAGE CONFIG
 # ======================================================
-
-st.sidebar.header("🎯 Helmet / No-Helmet / Overloading Detection")
-
-ROBOFLOW_API_KEY = "9hoQyKuZbdUuWxbLIW0r"
-
-CLIENT = InferenceHTTPClient(
-    api_url="https://serverless.roboflow.com",
-    api_key=ROBOFLOW_API_KEY
+st.set_page_config(
+    page_title="Smart Traffic Violation Dashboard",
+    page_icon="🚦",
+    layout="wide"
 )
 
-MODEL_ID = "nohelmet-dnqyh/1"
+# ======================================================
+# CUSTOM CSS
+# ======================================================
+st.markdown("""
+<style>
 
+[data-testid="stSidebar"] {
+    background-color: #B2BEB5;
+    padding: 20px;
+}
+[data-testid="stSidebar"] * {
+    color: #000000 !important;
+    font-size: 15px;
+}
+
+#MainMenu {visibility: hidden;}
+footer {visibility: hidden;}
+
+.card {
+    background-color: #ffffff;
+    padding: 20px;
+    border-radius: 15px;
+    border: 1px solid #e0e0e0;
+    box-shadow: 0px 4px 10px rgba(0,0,0,0.1);
+    text-align: center;
+}
+.card h2 {
+    font-size: 30px;
+    color: #333333;
+}
+.card p {
+    font-size: 16px;
+    color: #777777;
+    margin-top: -10px;
+}
+
+.section-box {
+    background: white;
+    padding: 25px;
+    border-radius: 15px;
+    border: 1px solid #e0e0e0;
+    box-shadow: 0 3px 15px rgba(0,0,0,0.1);
+    margin-bottom: 30px;
+}
+</style>
+""", unsafe_allow_html=True)
 
 # ======================================================
-# ⚠ UPDATED VIOLATION LOGIC (Same rules as yolo_detector.py)
+# HEADER
 # ======================================================
-def get_violation_only(preds):
-    classes = [p["class"] for p in preds]
-
-    has_helmet = "helmet" in classes
-    has_no_helmet = "no_helmet" in classes
-    has_overloading = "overloading" in classes
-
-    # All three → return both violations
-    if has_helmet and has_no_helmet and has_overloading:
-        return "🚨 OVERLOADING and 🚨 NO HELMET"
-
-    # no_helmet + overloading → return no_helmet
-    if has_no_helmet and has_overloading:
-        return "🚨 NO HELMET"
-
-    # only no_helmet
-    if has_no_helmet:
-        return "🚨 NO HELMET"
-
-    # only overloading
-    if has_overloading:
-        return "🚨 OVERLOADING"
-
-    # helmet alone or nothing
-    return "✅ No Violation Detected"
-
+st.markdown("""
+<h1 style='text-align: center; color:#222;'>
+🚦 SMART TRAFFIC VIOLATION PATTERN DETECTOR
+</h1>
+""", unsafe_allow_html=True)
 
 # ======================================================
-# IMAGE UPLOAD + YOLO INFERENCE
+# LOAD DATA
 # ======================================================
-
-uploaded_file = st.sidebar.file_uploader(
-    "Upload Image",
-    type=["jpg", "jpeg", "png"]
-)
-
-if uploaded_file:
-    img = Image.open(uploaded_file).convert("RGB")
-    st.image(img, caption="Uploaded Image", use_container_width=True)
-
-    if st.sidebar.button("Run Detection"):
-        # save temporarily
-        with tempfile.NamedTemporaryFile(delete=False, suffix=".jpg") as tmp:
-            img.save(tmp.name)
-            temp_path = tmp.name
-
-        with st.spinner("Running YOLO model..."):
-            result = CLIENT.infer(temp_path, model_id=MODEL_ID)
-
-        preds = result.get("predictions", [])
-        final_status = get_violation_only(preds)
-
-        # Draw ONLY violation boxes
-        draw = ImageDraw.Draw(img)
-        for pred in preds:
-            if pred["class"] == "helmet":
-                continue
-
-            x, y, w, h = pred["x"], pred["y"], pred["width"], pred["height"]
-            left = x - w / 2
-            top = y - h / 2
-            right = x + w / 2
-            bottom = y + h / 2
-
-            draw.rectangle([left, top, right, bottom], outline="red", width=3)
-            draw.text((left, top), f"{pred['class']} ({pred['confidence']:.2f})", fill="red")
-
-        # Show final status
-        st.subheader("🚦 Violation Result")
-        if final_status.startswith("🚨"):
-            st.error(final_status)
-        else:
-            st.success(final_status)
-
-        st.subheader("📸 Detection Result")
-        st.image(img, caption="Detected Violations", use_container_width=True)
-
-        st.subheader("📄 Prediction JSON")
-        st.json(result)
-
-
-# ======================================================
-# 🔹 PARQUET DATA LOADING
-# ======================================================
-
 DATA_DIR = "data/processed/parquet/"
 
-try:
-    available_files = [f for f in os.listdir(DATA_DIR) if f.endswith(".parquet")]
-except FileNotFoundError:
-    st.error("❌ Directory missing: data/processed/parquet/")
-    st.stop()
-
-st.sidebar.markdown("### 📁 Available Datasets")
-for f in available_files:
-    st.sidebar.write("✔", f)
-
 @st.cache_data
-def safe_load_parquet(filename):
+def load_parquet(name):
     try:
-        return pd.read_parquet(os.path.join(DATA_DIR, filename))
+        return pd.read_parquet(DATA_DIR + name)
     except:
         return pd.DataFrame()
 
-if "cleaned_violations.parquet" in available_files:
-    df = safe_load_parquet("cleaned_violations.parquet")
-else:
-    st.error("❌ cleaned_violations.parquet not found.")
-    st.stop()
-
-
-# ======================================================
-# 🔹 DASHBOARD START
-# ======================================================
-
-st.title("🚦 Smart Traffic Violation Analytics Dashboard")
-st.write("YOLO Violation Detection + Analytical Reporting Dashboard")
+df = load_parquet("cleaned_violations.parquet")
+violations_by_window = load_parquet("violations_by_window.parquet")
+weekday_weekend_analysis = load_parquet("weekday_weekend_analysis.parquet")
+violation_time_patterns = load_parquet("violation_time_patterns.parquet")
 
 if df.empty:
-    st.error("❌ No data found.")
+    st.error("❌ cleaned_violations.parquet missing")
     st.stop()
 
-if "date" in df.columns:
-    df["date"] = pd.to_datetime(df["date"], errors="coerce")
+# AUTO-DETECT COLUMN NAMES
+def find_col(keys):
+    for key in keys:
+        for col in df.columns:
+            if key.lower() in col.lower().replace(" ", ""):
+                return col
+    return None
 
+timestamp_col = find_col(["timestamp", "time"])
+violation_col = find_col(["violationtype", "violation"])
+severity_col = find_col(["severity"])
+location_col = find_col(["location", "loc"])
 
 # ======================================================
-# 🔹 FILTERS
+# LOAD YOLO MODEL
 # ======================================================
+@st.cache_resource
+def load_model():
+    return YOLO("runs/detect/train2/weights/last.pt")
 
+model = load_model()
+
+# ======================================================
+# SIDEBAR FILTERS
+# ======================================================
 st.sidebar.header("🔍 Filters")
 
-def safe_unique(series):
-    return series.dropna().unique().tolist() if series is not None else []
+with st.sidebar.expander("📁 Available Datasets", expanded=False):
+    for f in os.listdir(DATA_DIR):
+        st.write("✔", f)
 
+def unique(series): 
+    return sorted(series.dropna().unique().tolist())
 
-violation_cols = [c for c in df.columns if "violation" in c.lower() and "type" in c.lower()]
-violation_col = violation_cols[0] if violation_cols else None
+selected_violation = st.sidebar.multiselect(
+    "Violation Type", unique(df[violation_col]), default=unique(df[violation_col])
+)
 
-if violation_col:
-    violation_options = safe_unique(df[violation_col])
-    selected_violation = st.sidebar.multiselect(
-        "Violation Type",
-        violation_options,
-        default=violation_options
-    )
-else:
-    selected_violation = []
-
-
-severity_cols = [c for c in df.columns if "severity" in c.lower()]
-severity_col = severity_cols[0] if severity_cols else None
-
-if severity_col:
-    severity_options = safe_unique(df[severity_col])
-    selected_severity = st.sidebar.multiselect(
-        "Severity",
-        severity_options,
-        default=severity_options
-    )
-else:
-    selected_severity = []
-
-
-if "date" in df.columns:
-    min_date, max_date = df["date"].min(), df["date"].max()
-    date_range = st.sidebar.date_input("Date Range", [min_date, max_date])
-
+selected_severity = st.sidebar.multiselect(
+    "Severity", unique(df[severity_col]), default=unique(df[severity_col])
+)
 
 # APPLY FILTERS
 filtered_df = df.copy()
-
-if violation_col:
-    filtered_df = filtered_df[filtered_df[violation_col].isin(selected_violation)]
-
-if severity_col:
-    filtered_df = filtered_df[filtered_df[severity_col].isin(selected_severity)]
-
-if "date" in filtered_df.columns:
-    filtered_df = filtered_df[
-        filtered_df["date"].between(pd.to_datetime(date_range[0]), pd.to_datetime(date_range[1]))
-    ]
-
+filtered_df = filtered_df[filtered_df[violation_col].isin(selected_violation)]
+filtered_df = filtered_df[filtered_df[severity_col].isin(selected_severity)]
 
 # ======================================================
-# 🔹 SHOW FILTERED DATA
+# KPI CARDS
 # ======================================================
+total_viol = len(filtered_df)
+common_violation = filtered_df[violation_col].mode()[0]
 
+filtered_df["hour"] = pd.to_datetime(filtered_df[timestamp_col], errors="coerce").dt.hour
+peak_hour = int(filtered_df["hour"].mode()[0])
+
+c1, c2, c3 = st.columns(3)
+c1.markdown(f"<div class='card'><h2>{total_viol}</h2><p>Total Violations</p></div>", unsafe_allow_html=True)
+c2.markdown(f"<div class='card'><h2>{common_violation}</h2><p>Most Common Violation</p></div>", unsafe_allow_html=True)
+c3.markdown(f"<div class='card'><h2>{peak_hour}:00</h2><p>Peak Hour</p></div>", unsafe_allow_html=True)
+
+# ======================================================
+# YOLO DETECTION (ABOVE FILTERED DATA PREVIEW)
+# ======================================================
+st.markdown("<div class='section-box'>", unsafe_allow_html=True)
+st.subheader("🖼️ YOLO Violation Detection")
+
+upload = st.file_uploader("Upload Image", type=["jpg", "jpeg", "png"])
+
+if upload:
+    image = Image.open(upload).convert("RGB")
+    st.image(image, caption="Uploaded Image", use_container_width=True)
+
+    with st.spinner("Detecting..."):
+        results = model(image, save=False)
+
+    r = results[0]
+    boxes = r.boxes
+
+    annotated = image.copy()
+    draw = ImageDraw.Draw(annotated)
+    violations = []
+
+    for b in boxes:
+        x1, y1, x2, y2 = b.xyxy[0].tolist()
+        cls = model.names[int(b.cls[0])]
+        conf = float(b.conf[0])
+
+        violations.append(cls)
+
+        draw.rectangle([x1, y1, x2, y2], outline="red", width=3)
+        draw.text((x1, y1 - 12), f"{cls} ({conf:.2f})", fill="red")
+
+    st.markdown("### 📌 Result:")
+    if violations:
+        st.success("Violations Detected:")
+        for v in list(dict.fromkeys(violations)):
+            st.write(f"- **{v}**")
+    else:
+        st.warning("📱 USING_MOBILE — No violations detected")
+
+    st.image(annotated, caption="YOLO Output", use_container_width=True)
+
+st.markdown("</div>", unsafe_allow_html=True)
+
+# ======================================================
+# FILTERED DATA (Appears BELOW YOLO)
+# ======================================================
+st.markdown("<div class='section-box'>", unsafe_allow_html=True)
 st.subheader("📊 Filtered Data Preview")
 st.dataframe(filtered_df.head(20))
+st.markdown("</div>", unsafe_allow_html=True)
+
+# ======================================================
+# VIOLATION TYPE DISTRIBUTION
+# ======================================================
+st.markdown("<div class='section-box'>", unsafe_allow_html=True)
+st.subheader("🚨 Violation Type Distribution")
+viol_count = filtered_df[violation_col].value_counts().reset_index()
+viol_count.columns = [violation_col, "Count"]
+st.plotly_chart(px.bar(viol_count, x=violation_col, y="Count", color="Count"), use_container_width=True)
+st.markdown("</div>", unsafe_allow_html=True)
+
+# ======================================================
+# TIME WINDOW CHART
+# ======================================================
+if not violations_by_window.empty:
+    st.markdown("<div class='section-box'>", unsafe_allow_html=True)
+    st.subheader("⏳ Violations per 3-Hour Window")
+    st.plotly_chart(px.bar(violations_by_window, x="TimeWindow", y="Total_Violations", color="Total_Violations"), use_container_width=True)
+    st.markdown("</div>", unsafe_allow_html=True)
+
+# ======================================================
+# WEEKDAY VS WEEKEND
+# ======================================================
+if not weekday_weekend_analysis.empty:
+    st.markdown("<div class='section-box'>", unsafe_allow_html=True)
+    st.subheader("🗓️ Weekday vs Weekend Violations")
+    weekday_weekend_analysis["DayType"] = weekday_weekend_analysis["IsWeekend"].map({True: "Weekend", False: "Weekday"})
+    st.plotly_chart(px.bar(weekday_weekend_analysis, x="DayType", y="Total_Violations", color="Violation Type"), use_container_width=True)
+    st.markdown("</div>", unsafe_allow_html=True)
+
+# ======================================================
+# HEATMAP
+# ======================================================
+if not violation_time_patterns.empty:
+    st.markdown("<div class='section-box'>", unsafe_allow_html=True)
+    st.subheader("🔥 Violation Types vs Time Window")
+    pivot = violation_time_patterns.pivot_table(index="Violation Type", columns="TimeWindow", values="Violations", fill_value=0)
+    st.plotly_chart(px.imshow(pivot, color_continuous_scale="Blues"), use_container_width=True)
+    st.markdown("</div>", unsafe_allow_html=True)
+
+# ======================================================
+# HOTSPOT MAP (Corrected)
+# ======================================================
+st.markdown("<div class='section-box'>", unsafe_allow_html=True)
+st.subheader("📍 Hotspot Map")
+
+if location_col:
+    loc = filtered_df[location_col].value_counts().reset_index()
+    loc.columns = ["Location", "Count"]
+
+    def split_pos(x):
+        try:
+            la, lo = x.split(",")
+            return float(la), float(lo)
+        except:
+            return None, None
+
+    loc["lat"], loc["lon"] = zip(*loc["Location"].apply(split_pos))
+    map_df = loc.dropna()
+
+    # 🔥 Filter only valid INDIA coordinates
+    map_df = map_df[
+        (map_df["lat"] >= 8) & (map_df["lat"] <= 37) &
+        (map_df["lon"] >= 68) & (map_df["lon"] <= 97)
+    ]
+
+    if not map_df.empty:
+        fig = px.scatter_mapbox(
+            map_df,
+            lat="lat",
+            lon="lon",
+            size="Count",
+            hover_name="Location",
+            zoom=4
+        )
+        fig.update_layout(mapbox_style="open-street-map")
+        st.plotly_chart(fig, use_container_width=True)
+    else:
+        st.info("No valid India coordinates found.")
+else:
+    st.info("Location column missing.")
 
 
 # ======================================================
-# 🔹 TIME TRENDS
+# EXPORT SECTION
 # ======================================================
-
-st.subheader("📅 Time Trends")
-
-if "date" in filtered_df.columns:
-    daily = filtered_df.groupby(filtered_df["date"].dt.date).size().reset_index(name="count")
-    st.plotly_chart(px.line(daily, x="date", y="count",
-                            title="Violations Per Day", markers=True))
-
-if "hour" not in filtered_df.columns and "date" in filtered_df.columns:
-    filtered_df["hour"] = filtered_df["date"].dt.hour
-
-if "hour" in filtered_df.columns:
-    hourly = filtered_df.groupby("hour").size().reset_index(name="count")
-    st.plotly_chart(px.bar(hourly, x="hour", y="count",
-                           title="Violations Per Hour"))
-
-
-# ======================================================
-# 🔹 VIOLATION TYPE DISTRIBUTION
-# ======================================================
-
-if violation_col:
-    st.subheader("🚨 Violation Type Distribution")
-    counts = filtered_df[violation_col].value_counts().reset_index()
-    counts.columns = [violation_col, "count"]
-    st.plotly_chart(px.bar(counts, x=violation_col, y="count"))
-
-
-# ======================================================
-# 🔹 HIGH-RISK LOCATIONS
-# ======================================================
-
-st.subheader("📍 High-Risk Locations")
-
-loc_cols = [c for c in df.columns if "location" in c.lower()]
-if loc_cols:
-    top_loc = filtered_df[loc_cols[0]].value_counts().head(10).reset_index()
-    top_loc.columns = ["Location", "Count"]
-    st.table(top_loc)
-
-
-# ======================================================
-# 🔹 EXPORT RESULTS
-# ======================================================
-
 st.subheader("📤 Export Results")
 
 os.makedirs("reports", exist_ok=True)
 
 if st.button("Export CSV"):
     filtered_df.to_csv("reports/filtered_summary.csv", index=False)
-    st.success("Saved: reports/filtered_summary.csv")
+    st.success("CSV saved!")
 
 if st.button("Export JSON"):
     filtered_df.to_json("reports/filtered_summary.json", orient="records", indent=2)
-    st.success("Saved: reports/filtered_summary.json")
-
-
-# ======================================================
-# FOOTER
-# ======================================================
+    st.success("JSON saved!")
 
 st.markdown("---")
-st.caption("Developed by **Shivani Marelli** | Smart Traffic Project – YOLO + Analytics Dashboard")
+st.caption("Developed by **Shivani Marelli** | Smart Traffic Project")

@@ -1,13 +1,6 @@
-train: ../train/images
-val: ../valid/images
-test: ../test/images
+train: C:/Users/shiva/OneDrive/Desktop/smart-traffic/datasetsyolo/train/images
+val: C:/Users/shiva/OneDrive/Desktop/smart-traffic/datasetsyolo/valid/images
+test: C:/Users/shiva/OneDrive/Desktop/smart-traffic/datasetsyolo/test/images
 
-nc: 3
-names: ['helmet', 'no_helmet', 'overloading']
-
-roboflow:
-  workspace: charan-qvmnj
-  project: nohelmet-dnqyh
-  version: 1
-  license: CC BY 4.0
-  url: https://universe.roboflow.com/charan-qvmnj/nohelmet-dnqyh/dataset/1
+nc: 4
+names: ['MORE_THAN_TWO_PERSONS', 'USING_MOBILE', 'WITHOUT_HELMET', 'WITH_HELMET']

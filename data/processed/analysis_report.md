@@ -23,8 +23,8 @@
 ### Spatial Clusters
 - Number of clusters analyzed: 5
 - Cluster characteristics:
-  * Cluster 4: 2323.0 violations, Avg Severity: 2.98
-  * Cluster 0: 1628.0 violations, Avg Severity: 3.00
-  * Cluster 3: 1621.0 violations, Avg Severity: 2.94
-  * Cluster 1: 1611.0 violations, Avg Severity: 3.00
-  * Cluster 2: 1556.0 violations, Avg Severity: 2.98
+  * Cluster 4: 2323.0 violations, Avg Severity: 3.59
+  * Cluster 0: 1628.0 violations, Avg Severity: 3.56
+  * Cluster 3: 1621.0 violations, Avg Severity: 3.58
+  * Cluster 1: 1611.0 violations, Avg Severity: 3.60
+  * Cluster 2: 1556.0 violations, Avg Severity: 3.64
